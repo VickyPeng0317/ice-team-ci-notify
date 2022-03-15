@@ -62,28 +62,55 @@ export class BaseLineNotifyService {
   }
 
   async getText() {
-    const res = await fs.promises.readFile('src/assets/record.txt');
-    const list = res.toString().split('\n').filter(x => x.includes(':') || x.includes('/')).map((x, index) => {
-      const isDate = x.includes('週') && !x.includes('\t') && moment(x.split('（')[0]).format('YYYY/MM/DD HH:mm:ss') !== 'Invalid date' ;
+    const KEYWORD_LIST = ['愛', '喜歡'];
+    const recordList = await this.getLineRecordList();
+    const matchRecordList = recordList.filter(recordItem => this.checkHasKeyword(recordItem, KEYWORD_LIST));
+    const matchRecordTextList = matchRecordList.map(x => x.text);
+    const index = Math.floor(Math.random()*(matchRecordTextList.length));
+    return matchRecordTextList[index];
+  }
+
+  checkHasKeyword(recordItem: IRecordItem, keywordList: string[]){
+    const { type, message } = recordItem;
+    const isMessage = type === 'message';
+    const hasMessage = !!message;
+    if (!isMessage || !hasMessage) {
+      return false;
+    }
+    const hasKeyWord = keywordList.some(keyword => message?.includes(keyword));
+    return hasKeyWord;
+  }
+
+  async getLineRecordList(): Promise<IRecordItem[]> {
+    const recordFile = await fs.promises.readFile('src/assets/record.txt');
+    const allRecord = recordFile.toString().split('\n').filter(x => x.includes(':') || x.includes('/')).map((x, index) => {
+      const isDate = x.includes('週') && !x.includes('\t') && moment(x.split('（')[0]).format('yyyy/MM/dd HH:mm:ss') !== 'Invalid date' ;
       const type =  !isDate ? 'message' : 'date';
       const origin = x;
       const [time, from, message] = origin.split('\t');
       return {
         index, type, time, from, message, origin
       }
-    }).filter(item => item.type === 'message' && !!item.message
-      ? item.message?.includes('愛') || item.message?.includes('喜歡')
-      : true
-    );
-    const dateList = list.filter(x => x.type === 'date');
-    let messageList = list.filter(x => x.type === 'message');
-    const textList = messageList.map(item => {
+    });
+    const dateList = allRecord.filter(x => x.type === 'date');
+    const messageList = allRecord.filter(x => x.type === 'message')
+    const recordList: IRecordItem[] = messageList.map(item => {
       const dateIndex = Math.max(...dateList.filter(x => item.index > x.index).map(x => x.index));
-      const date = dateList.find(x => x.index === dateIndex).origin;
+      const date = dateList.find(x => x.index === dateIndex)?.origin;
       const text = date + item.time + `\n${item.from}: ` +item.message;
-      return {...item, date, text}
-    }).map(x => x.text);
-    const index = Math.floor(Math.random()*(textList.length));
-    return textList[index];
+      return {...item, date, text};
+    });
+    return recordList;
   }
+}
+
+interface IRecordItem {
+  index: number;
+  type: string;
+  time: string;
+  from: string;
+  message: string;
+  origin: string;
+  date: string;
+  text: string;
 }

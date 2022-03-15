@@ -1,3 +1,4 @@
+import { BaseLineNotifyService } from './core/services/base-line-notify-service';
 import { Body, Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
 import { LOVE_TEXT_LIST } from './core/mocks/love-text-list';
@@ -5,7 +6,7 @@ import * as fs from 'fs';
 import moment = require('moment');
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService, private baseLineNotifyService: BaseLineNotifyService) {}
 
   @Get()
   getHello(): string {
@@ -19,38 +20,41 @@ export class AppController {
     };
   }
 
-  @Get('read')
-  async read() {
-    const res = await fs.promises.readFile('src/assets/record.txt');
-    const list = res.toString().split('\n').filter(x => x.includes(':') || x.includes('/')).map((x, index) => {
-      const isDate = x.includes('週') && !x.includes('\t') && moment(x.split('（')[0]).format('YYYY/MM/DD HH:mm:ss') !== 'Invalid date' ;
-      const type =  !isDate ? 'message' : 'date';
-      const origin = x;
-      const [time, from, message] = origin.split('\t');
-      const text = '';
-      return {
-        index, type, time, from, message, origin, text
-      }
-    }).filter(item => item.type === 'message' && !!item.message
-      ? item.message?.includes('哈哈')
-      : true
+  @Get('record')
+  async getRecord(): Promise<any> {
+    const data = await this.baseLineNotifyService.getLineRecordList();
+    return data;
+  }
+
+  
+  @Get('record2')
+  async getRecord2(): Promise<any> {
+    const data = await this.baseLineNotifyService.getText();
+    return data;
+  }
+
+
+  @Get('read2')
+  async read2() {
+    const KEYWORD_LIST = ['寶貝'];
+    const FROM_SETTING = { 
+      inRecordFrom: '小胖子',
+      resFrom: 'vicky',
+      resTo: 'peng'
+    };
+    const recordList = await this.baseLineNotifyService.getLineRecordList();
+    const matchMessageList = recordList.filter(recordItem => 
+      this.baseLineNotifyService.checkHasKeyword(recordItem, KEYWORD_LIST)
     );
-    let dateList = list.filter(x => x.type === 'date');
-    let messageList = list.filter(x => x.type === 'message');
-    messageList = messageList.map((item) => {
-      const dateIndex = Math.max(...dateList.filter(x => item.index > x.index).map(x => x.index));
-      const date = dateList.find(x => x.index === dateIndex).origin;
-      const text = date + item.time + `\n${item.from}: ` +item.message;
-      return {...item, date, text}
-    });
-    dateList = dateList.map(x => {
-      const loveLen = messageList.filter(o => o.text.includes(x.origin)).length;
-      return {...x, loveLen}
+    const dateList = [... new Set(recordList.map(item => item.date))];
+    const everyDayLenList = dateList.map(date => {
+      const len = matchMessageList.filter(o => o.text.includes(date)).length;
+      return { date, len };
     });
     return {
-      dateList: dateList,
-      vicky: messageList.filter(x => x.from === '小胖子').length,
-      peng: messageList.filter(x => x.from !== '小胖子').length
+      [FROM_SETTING.resFrom]: matchMessageList.filter(x => x.from === FROM_SETTING.inRecordFrom).length,
+      [FROM_SETTING.resTo]: matchMessageList.filter(x => x.from !== FROM_SETTING.inRecordFrom).length,
+      everyDayLenList,
     };
   }
 }
